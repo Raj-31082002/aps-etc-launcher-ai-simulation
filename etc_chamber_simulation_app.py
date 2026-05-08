@@ -3,26 +3,59 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime
+import io
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="APS ETC AI Digital Twin",
+    page_title="APS ETC Digital Twin",
     page_icon="🛡️",
     layout="wide"
 )
 
-st.title("🛡️ AI-Assisted APS + ETC Launcher Digital Twin")
+# ============================================================
+# DARK UI STYLE
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background: linear-gradient(135deg, #07110d 0%, #101c16 45%, #050707 100%);
+        color: #e8f5e9;
+    }
+    .block-container {
+        padding-top: 1.2rem;
+    }
+    div[data-testid="stMetric"] {
+        background-color: rgba(20, 40, 30, 0.82);
+        border: 1px solid rgba(80, 255, 160, 0.25);
+        border-radius: 16px;
+        padding: 14px;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: rgba(18, 35, 28, 0.9);
+        border-radius: 12px;
+        padding: 10px 16px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+st.title("🛡️ AI-Assisted APS–ETC Digital Twin with 3D Interception Visualization")
 st.caption(
-    "ETC launcher prediction, APS engagement timing, DMA launcher selection, "
-    "slew-rate comparison, CFD-style contours, Monte Carlo Pk, and report generation."
+    "Clean 3D APS engagement animation with radar sweep, missile/interceptor differentiation, "
+    "neutralization burst, reaction time, slew-rate comparison, contours, and downloadable reports."
 )
 
 st.warning(
-    "Academic simplified model for M.Tech thesis visualization. "
-    "Not a validated operational weapon-design or fire-control solver."
+    "Academic simplified model for thesis demonstration. Not a validated weapon-design or operational fire-control solver."
 )
 
 # ============================================================
@@ -48,7 +81,7 @@ base = THREAT_DB[threat_type]
 
 velocity = st.sidebar.slider("Threat Velocity (m/s)", 80, 900, int(base["velocity"]), 10)
 distance = st.sidebar.slider("Initial Threat Distance (m)", 20, 500, int(base["distance"]), 10)
-angle = st.sidebar.slider("Incoming Angle / Required Slew Angle (deg)", 0, 90, int(base["angle"]), 1)
+angle = st.sidebar.slider("Incoming Angle / Slew Angle (deg)", 0, 90, int(base["angle"]), 1)
 
 detection_range = st.sidebar.slider("Detection Range (m)", 50, 800, 350, 10)
 interception_range = st.sidebar.slider("Interception Range (m)", 20, 250, 120, 5)
@@ -64,7 +97,7 @@ barrel_length_mm = st.sidebar.slider("Launcher / Barrel Length (mm)", 150, 1500,
 interceptor_mass_g = st.sidebar.slider("Interceptor Mass (g)", 20, 300, 80, 5)
 interceptor_diameter_mm = st.sidebar.slider("Interceptor Diameter (mm)", 10, 50, 25, 1)
 
-st.sidebar.header("Reaction Time Inputs")
+st.sidebar.header("Reaction + Slew Inputs")
 
 sensor_delay_ms = st.sidebar.slider("Sensor Detection Delay (ms)", 1, 30, 4)
 radar_delay_ms = st.sidebar.slider("Radar Tracking Delay (ms)", 1, 30, 3)
@@ -72,13 +105,11 @@ ai_delay_ms = st.sidebar.slider("AI Decision Delay (ms)", 1, 30, 2)
 etc_activation_delay_ms = st.sidebar.slider("ETC Puck Activation Delay (ms)", 1, 30, 5)
 conventional_ignition_delay_ms = st.sidebar.slider("Conventional Ignition Delay (ms)", 5, 80, 25)
 
-st.sidebar.header("Slew Rate Comparison")
-
-conventional_slew_rate_dps = st.sidebar.slider("Conventional Launcher Slew Rate (deg/s)", 20, 300, 90, 10)
+conventional_slew_rate_dps = st.sidebar.slider("Conventional Slew Rate (deg/s)", 20, 300, 90, 10)
 etc_dma_slew_rate_dps = st.sidebar.slider("ETC-DMA Puck Slew Rate (deg/s)", 300, 2000, 1000, 50)
 etc_effective_slew_angle_deg = st.sidebar.slider("ETC-DMA Effective Micro-Slew Angle (deg)", 0, 10, 2, 1)
 
-st.sidebar.header("Digital Twin Health")
+st.sidebar.header("System Health")
 
 radar_health = st.sidebar.slider("Radar Health (%)", 0, 100, 90)
 sensor_health = st.sidebar.slider("Sensor Health (%)", 0, 100, 90)
@@ -87,16 +118,25 @@ thermal_load = st.sidebar.slider("Thermal Load (%)", 0, 100, 45)
 available_launchers = st.sidebar.slider("Available DMA Launchers", 1, 8, 6)
 remaining_countermeasures = st.sidebar.slider("Remaining Countermeasures", 0, 8, 4)
 
-st.sidebar.header("Monte Carlo Uncertainty")
+st.sidebar.header("Graphics Controls")
 
-sensor_error_m = st.sidebar.slider("Sensor Range Error ± (m)", 0, 50, 10)
-angle_error_deg = st.sidebar.slider("Angle Error ± (deg)", 0, 15, 3)
-velocity_error_percent = st.sidebar.slider("Velocity Error ± (%)", 0, 20, 5)
-delay_error_ms = st.sidebar.slider("Delay Error ± (ms)", 0, 20, 5)
-monte_carlo_trials = st.sidebar.slider("Monte Carlo Trials", 100, 3000, 1000, 100)
+camera_view = st.sidebar.selectbox(
+    "Camera View",
+    ["Isometric", "Side View", "Top View", "Interceptor View"],
+    index=0
+)
+
+show_detection = st.sidebar.checkbox("Show Detection Range", True)
+show_interception = st.sidebar.checkbox("Show Interception Range", True)
+show_radar_sweep = st.sidebar.checkbox("Show Radar Sweep", True)
+show_trajectories = st.sidebar.checkbox("Show Trajectories", True)
+show_labels = st.sidebar.checkbox("Show Labels", True)
+show_exhaust = st.sidebar.checkbox("Show Exhaust Trail", True)
+
+animation_frames = st.sidebar.slider("Animation Smoothness", 35, 90, 55, 5)
 
 # ============================================================
-# CORE FUNCTIONS
+# CORE MODELS
 # ============================================================
 
 def clip(v, lo, hi):
@@ -197,19 +237,6 @@ def pk_model(time_margin, threat_class, radar_h, sensor_h, launcher_h, ammo, the
     pk = (0.70 * timing_factor + health_factor + ammo_factor - thermal_penalty) * threat_factor
     return clip(pk, 0, 0.98)
 
-def thermal_safety(pressure_mpa, temp_K, thermal_load):
-    safety_score = 100
-    safety_score -= max(0, pressure_mpa - 150) * 0.12
-    safety_score -= max(0, temp_K - 2500) * 0.01
-    safety_score -= thermal_load * 0.35
-    safety_score = clip(safety_score, 0, 100)
-
-    if safety_score >= 70:
-        return "SAFE", safety_score
-    elif safety_score >= 40:
-        return "WARNING", safety_score
-    return "CRITICAL", safety_score
-
 def selected_dma(angle_deg, available):
     sectors = ["Front", "Front-Left", "Left", "Rear-Left", "Rear", "Rear-Right", "Right", "Front-Right"]
     idx = int((angle_deg / 360) * 8) % 8
@@ -243,19 +270,8 @@ threat_class, score = threat_ai_score(velocity, distance, angle, base["lethality
 
 tti = distance / velocity
 
-etc_base_reaction = reaction_time_s(
-    sensor_delay_ms,
-    radar_delay_ms,
-    ai_delay_ms,
-    etc_activation_delay_ms
-)
-
-conventional_base_reaction = reaction_time_s(
-    sensor_delay_ms,
-    radar_delay_ms,
-    ai_delay_ms,
-    conventional_ignition_delay_ms
-)
+etc_base_reaction = reaction_time_s(sensor_delay_ms, radar_delay_ms, ai_delay_ms, etc_activation_delay_ms)
+conventional_base_reaction = reaction_time_s(sensor_delay_ms, radar_delay_ms, ai_delay_ms, conventional_ignition_delay_ms)
 
 etc_slew_time = slew_time_s(etc_effective_slew_angle_deg, etc_dma_slew_rate_dps)
 conventional_slew_time = slew_time_s(angle, conventional_slew_rate_dps)
@@ -272,28 +288,10 @@ conventional_total_interception = conventional_total_reaction + (etc["launch_acc
 etc_time_margin = tti - etc_total_interception
 conventional_time_margin = tti - conventional_total_interception
 
-etc_pk = pk_model(
-    etc_time_margin,
-    threat_class,
-    radar_health,
-    sensor_health,
-    launcher_health,
-    remaining_countermeasures,
-    thermal_load
-)
-
-conventional_pk = pk_model(
-    conventional_time_margin,
-    threat_class,
-    radar_health,
-    sensor_health,
-    launcher_health,
-    remaining_countermeasures,
-    thermal_load + 8
-)
+etc_pk = pk_model(etc_time_margin, threat_class, radar_health, sensor_health, launcher_health, remaining_countermeasures, thermal_load)
+conventional_pk = pk_model(conventional_time_margin, threat_class, radar_health, sensor_health, launcher_health, remaining_countermeasures, thermal_load + 8)
 
 dma_id, dma_sector = selected_dma(angle, available_launchers)
-thermal_status, thermal_score = thermal_safety(etc["pressure_mpa"], etc["temp_K"], thermal_load)
 
 # ============================================================
 # HEADER METRICS
@@ -311,17 +309,15 @@ m4.metric("ETC Reaction Time", f"{etc_total_reaction*1000:.1f} ms")
 
 tabs = st.tabs([
     "Mission Dashboard",
-    "Reaction & Slew Comparison",
-    "3D Engagement",
-    "ETC Results",
-    "Monte Carlo",
-    "Pyro vs ETC",
-    "DMA Map",
-    "Report"
+    "Clean 3D Simulation",
+    "Reaction + Slew Comparison",
+    "Tactical Top View",
+    "ETC Curves + Contours",
+    "Download Report"
 ])
 
 # ============================================================
-# TAB 1 — MISSION DASHBOARD
+# TAB 1
 # ============================================================
 
 with tabs[0]:
@@ -340,56 +336,318 @@ with tabs[0]:
     else:
         st.error("ETC-DMA Decision: HIGH RISK — Timing or system condition is weak.")
 
-    summary = pd.DataFrame({
-        "Parameter": [
-            "Threat Type",
-            "Threat Velocity",
-            "Initial Distance",
-            "Incoming Angle",
-            "AI Threat Class",
-            "Selected DMA Launcher",
-            "Peak Chamber Pressure",
-            "Peak Chamber Temperature",
-            "ETC Muzzle Velocity",
-            "ETC Total Reaction Time",
-            "ETC Interception Time",
-            "ETC Probability of Kill",
-            "Conventional Total Reaction Time",
-            "Conventional Interception Time",
-            "Conventional Probability of Kill"
-        ],
-        "Value": [
-            threat_type,
-            f"{velocity} m/s",
-            f"{distance} m",
-            f"{angle} deg",
-            class_name(threat_class),
-            f"{dma_id}: {dma_sector}",
-            f"{etc['pressure_mpa']:.2f} MPa",
-            f"{etc['temp_K']:.0f} K",
-            f"{etc['muzzle_velocity']:.2f} m/s",
-            f"{etc_total_reaction*1000:.2f} ms",
-            f"{etc_total_interception:.4f} s",
-            f"{etc_pk*100:.2f}%",
-            f"{conventional_total_reaction*1000:.2f} ms",
-            f"{conventional_total_interception:.4f} s",
-            f"{conventional_pk*100:.2f}%"
+# ============================================================
+# 3D HELPERS
+# ============================================================
+
+def cuboid(x0, x1, y0, y1, z0, z1, color="olive", opacity=1):
+    x = [x0,x1,x1,x0,x0,x1,x1,x0]
+    y = [y0,y0,y1,y1,y0,y0,y1,y1]
+    z = [z0,z0,z0,z0,z1,z1,z1,z1]
+    i = [0,0,0,1,1,2,4,4,5,5,6,6]
+    j = [1,2,4,2,5,3,5,6,6,1,7,2]
+    k = [2,3,5,5,6,7,6,7,1,0,2,3]
+    return go.Mesh3d(x=x,y=y,z=z,i=i,j=j,k=k,color=color,opacity=opacity,flatshading=True,hoverinfo="skip")
+
+def cylinder_x(x0, x1, y, z, radius=0.12, color="darkolivegreen", n=20):
+    theta = np.linspace(0, 2*np.pi, n)
+    x, yy, zz = [], [], []
+    for xi in [x0, x1]:
+        x.extend([xi]*n)
+        yy.extend(y + radius*np.cos(theta))
+        zz.extend(z + radius*np.sin(theta))
+    ii, jj, kk = [], [], []
+    for a in range(n-1):
+        ii += [a, a+1]
+        jj += [a+1, a+n+1]
+        kk += [a+n, a+n]
+    return go.Mesh3d(x=x,y=yy,z=zz,i=ii,j=jj,k=kk,color=color,hoverinfo="skip")
+
+def ring(radius, z, color, width=6):
+    t = np.linspace(0, 2*np.pi, 250)
+    return go.Scatter3d(
+        x=radius*np.cos(t),
+        y=radius*np.sin(t),
+        z=np.full_like(t,z),
+        mode="lines",
+        line=dict(color=color,width=width),
+        hoverinfo="skip"
+    )
+
+def create_tank():
+    parts = []
+    parts.append(cuboid(-4.5,4.5,-2,2,0.35,1.2,"darkolivegreen"))
+    parts.append(cuboid(-1.8,1.8,-1.25,1.25,1.2,2.05,"olive"))
+    parts.append(cuboid(-2.3,-1.65,-0.5,0.5,1.5,2.0,"darkkhaki"))
+    parts.append(cylinder_x(-8.4,-2.3,0,1.75,0.12,"darkolivegreen"))
+    parts.append(cuboid(-4.8,4.7,-2.55,-2.05,0,0.65,"dimgray"))
+    parts.append(cuboid(-4.8,4.7,2.05,2.55,0,0.65,"dimgray"))
+
+    dma = [
+        (-4.4,-2.35,1.45),
+        (-4.4,2.35,1.45),
+        (0,-2.35,1.55),
+        (0,2.35,1.55),
+        (4.2,-2.35,1.45),
+        (4.2,2.35,1.45),
+        (0.1,0,2.58),
+        (-1.3,0,2.45)
+    ]
+
+    for idx, p in enumerate(dma[:available_launchers]):
+        col = "yellow" if idx+1 == dma_id else "gold"
+        parts.append(go.Scatter3d(
+            x=[p[0]], y=[p[1]], z=[p[2]],
+            mode="markers",
+            marker=dict(size=7,color=col),
+            hoverinfo="skip"
+        ))
+
+    return parts, np.array(dma[:available_launchers])
+
+def missile_body(x, y, z, color="red"):
+    traces = []
+    traces.append(go.Cone(
+        x=[x], y=[y], z=[z],
+        u=[0.8], v=[0], w=[0],
+        sizemode="absolute", sizeref=0.48,
+        colorscale=[[0,color],[1,color]],
+        showscale=False,
+        hoverinfo="skip"
+    ))
+    traces.append(cuboid(x-0.9, x-0.15, y-0.08, y+0.08, z-0.08, z+0.08, color, 1))
+    traces.append(cuboid(x-1.0, x-0.75, y-0.30, y-0.20, z-0.04, z+0.04, color, 1))
+    traces.append(cuboid(x-1.0, x-0.75, y+0.20, y+0.30, z-0.04, z+0.04, color, 1))
+    traces.append(cuboid(x-1.0, x-0.75, y-0.04, y+0.04, z+0.20, z+0.30, color, 1))
+    return traces
+
+def interceptor_body(x, y, z):
+    return [
+        go.Cone(
+            x=[x], y=[y], z=[z],
+            u=[-0.7], v=[0.25], w=[0.05],
+            sizemode="absolute", sizeref=0.40,
+            colorscale=[[0,"lime"],[1,"lime"]],
+            showscale=False,
+            hoverinfo="skip"
+        ),
+        cuboid(x+0.12, x+0.55, y-0.06, y+0.06, z-0.06, z+0.06, "lime", 1)
+    ]
+
+def burst_cloud(x, y, z):
+    pts = []
+    for r, col, size in [(0.15, "yellow", 5), (0.35, "orange", 4), (0.55, "red", 3)]:
+        theta = np.linspace(0, 2*np.pi, 18)
+        phi = np.linspace(0, np.pi, 10)
+        theta, phi = np.meshgrid(theta, phi)
+        xx = x + r*np.sin(phi)*np.cos(theta)
+        yy = y + r*np.sin(phi)*np.sin(theta)
+        zz = z + r*np.cos(phi)
+        pts.append(go.Scatter3d(
+            x=xx.flatten(), y=yy.flatten(), z=zz.flatten(),
+            mode="markers",
+            marker=dict(size=size, color=col, opacity=0.7),
+            hoverinfo="skip"
+        ))
+    return pts
+
+def exhaust_trail(path, upto, color):
+    if upto <= 2:
+        return go.Scatter3d(x=[], y=[], z=[], mode="lines")
+    start = max(0, upto-10)
+    return go.Scatter3d(
+        x=path[start:upto,0],
+        y=path[start:upto,1],
+        z=path[start:upto,2],
+        mode="lines",
+        line=dict(color=color, width=5),
+        opacity=0.55,
+        hoverinfo="skip"
+    )
+
+def radar_sweep_line(radius, frame_idx):
+    ang = np.radians((frame_idx * 10) % 360)
+    return go.Scatter3d(
+        x=[0, radius*np.cos(ang)],
+        y=[0, radius*np.sin(ang)],
+        z=[0.12, 0.12],
+        mode="lines",
+        line=dict(color="cyan", width=5),
+        hoverinfo="skip"
+    )
+
+def camera_dict(view):
+    if view == "Top View":
+        return dict(eye=dict(x=0, y=0, z=2.3), center=dict(x=0, y=0, z=0))
+    if view == "Side View":
+        return dict(eye=dict(x=-2.2, y=0.1, z=0.7), center=dict(x=-0.15, y=0, z=-0.1))
+    if view == "Interceptor View":
+        return dict(eye=dict(x=-1.2, y=-2.0, z=0.8), center=dict(x=-0.2, y=0, z=-0.1))
+    return dict(eye=dict(x=-1.85, y=-1.35, z=0.85), center=dict(x=-0.15, y=0, z=-0.15))
+
+def build_3d_figure():
+    scale = 25
+    det_r = detection_range / scale
+    int_r = interception_range / scale
+
+    theta = np.radians(angle)
+    start = np.array([
+        -distance/scale,
+        -np.tan(theta)*(distance/scale)*0.45,
+        2.2 + (angle/90)*3
+    ])
+
+    center = np.array([0,0,1.45])
+    direction = (center-start) / np.linalg.norm(center-start)
+    intercept = center - direction * int_r
+
+    n = animation_frames
+    missile_path = np.linspace(start, center, n)
+
+    tank, dma_pos = create_tank()
+    launch_pt = dma_pos[min(dma_id-1, len(dma_pos)-1)]
+    interceptor_path = np.linspace(launch_pt, intercept, n)
+    intercept_idx = int(np.argmin(np.linalg.norm(missile_path-intercept, axis=1)))
+
+    gx, gy = np.meshgrid(np.linspace(-18,10,2), np.linspace(-10,10,2))
+    ground = go.Surface(
+        x=gx, y=gy, z=np.zeros_like(gx)-0.04,
+        colorscale=[[0,"rgb(45,43,35)"],[1,"rgb(45,43,35)"]],
+        opacity=0.75,
+        showscale=False,
+        hoverinfo="skip"
+    )
+
+    base_data = [ground] + tank
+
+    if show_detection:
+        base_data.append(ring(det_r,0.04,"cyan",5))
+    if show_interception:
+        base_data.append(ring(int_r,0.08,"lime",6))
+    if show_trajectories:
+        base_data.append(go.Scatter3d(
+            x=missile_path[:,0], y=missile_path[:,1], z=missile_path[:,2],
+            mode="lines", line=dict(color="red", width=4, dash="dot"),
+            hoverinfo="skip"
+        ))
+        base_data.append(go.Scatter3d(
+            x=[launch_pt[0],intercept[0]], y=[launch_pt[1],intercept[1]], z=[launch_pt[2],intercept[2]],
+            mode="lines", line=dict(color="lime", width=5, dash="dash"),
+            hoverinfo="skip"
+        ))
+
+    if show_labels:
+        base_data.append(go.Scatter3d(
+            x=[intercept[0]], y=[intercept[1]], z=[intercept[2]],
+            mode="markers+text",
+            marker=dict(size=7,color="yellow"),
+            text=["Neutralization Point"],
+            textposition="top center",
+            hoverinfo="skip"
+        ))
+    else:
+        base_data.append(go.Scatter3d(
+            x=[intercept[0]], y=[intercept[1]], z=[intercept[2]],
+            mode="markers",
+            marker=dict(size=7,color="yellow"),
+            hoverinfo="skip"
+        ))
+
+    if show_radar_sweep:
+        base_data.append(radar_sweep_line(det_r, 0))
+
+    base_data += missile_body(missile_path[0,0], missile_path[0,1], missile_path[0,2], "red")
+    base_data += interceptor_body(launch_pt[0], launch_pt[1], launch_pt[2])
+
+    missile_trace_count = 5
+    interceptor_trace_count = 2
+    dynamic_start = len(base_data) - missile_trace_count - interceptor_trace_count
+
+    frames = []
+
+    for i in range(n):
+        idx = min(i, intercept_idx)
+
+        if i < intercept_idx:
+            mpos = missile_path[idx]
+            ipos = interceptor_path[min(i,n-1)]
+            mcolor = "red"
+            dynamic = []
+            if show_radar_sweep:
+                dynamic.append(radar_sweep_line(det_r, i))
+            dynamic += missile_body(mpos[0], mpos[1], mpos[2], mcolor)
+            dynamic += interceptor_body(ipos[0], ipos[1], ipos[2])
+            if show_exhaust:
+                dynamic.append(exhaust_trail(missile_path, idx, "orange"))
+                dynamic.append(exhaust_trail(interceptor_path, i, "lime"))
+        else:
+            dynamic = []
+            if show_radar_sweep:
+                dynamic.append(radar_sweep_line(det_r, i))
+            dynamic += missile_body(intercept[0], intercept[1], intercept[2], "orange")
+            dynamic += interceptor_body(intercept[0], intercept[1], intercept[2])
+            dynamic += burst_cloud(intercept[0], intercept[1], intercept[2])
+
+        # simple trace replacement: redraw dynamic traces after base
+        frames.append(go.Frame(data=dynamic, name=str(i)))
+
+    fig = go.Figure(data=base_data, frames=frames)
+
+    fig.update_layout(
+        height=760,
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        margin=dict(l=0,r=0,t=40,b=0),
+        scene=dict(
+            xaxis=dict(range=[-18,10],showgrid=False,showbackground=False,zeroline=False),
+            yaxis=dict(range=[-10,10],showgrid=False,showbackground=False,zeroline=False),
+            zaxis=dict(range=[0,9],showgrid=False,showbackground=False,zeroline=False),
+            aspectmode="manual",
+            aspectratio=dict(x=1.7,y=1,z=0.55),
+            camera=camera_dict(camera_view)
+        ),
+        updatemenus=[
+            dict(
+                type="buttons",
+                showactive=False,
+                x=0.02,
+                y=0.98,
+                buttons=[
+                    dict(
+                        label="▶ Play Simulation",
+                        method="animate",
+                        args=[None, dict(frame=dict(duration=90, redraw=True), transition=dict(duration=0), mode="immediate")]
+                    ),
+                    dict(
+                        label="⏸ Pause",
+                        method="animate",
+                        args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]
+                    )
+                ]
+            )
         ]
-    })
-    st.table(summary)
+    )
+
+    return fig
 
 # ============================================================
-# TAB 2 — REACTION & SLEW COMPARISON
+# TAB 2
 # ============================================================
 
 with tabs[1]:
-    st.subheader("Reaction Time and Slew Rate Comparison: ETC-DMA Puck vs Conventional Launcher")
+    st.subheader("Clean 3D APS Interception Simulation")
+    fig3d = build_3d_figure()
+    st.plotly_chart(fig3d, use_container_width=True)
+    st.success("Red = incoming threat. Lime = interceptor. Yellow/orange burst = neutralization. Cyan = detection. Green = interception.")
 
-    st.write(
-        "This section compares a distributed ETC-DMA puck-style launcher with a conventional mechanically slewed launcher. "
-        "The ETC-DMA case assumes a small effective micro-slew because modules are distributed around the vehicle, "
-        "whereas the conventional case must slew through the incoming threat angle."
-    )
+# ============================================================
+# TAB 3
+# ============================================================
+
+with tabs[2]:
+    st.subheader("Reaction Time and Slew Rate Comparison")
 
     comparison_df = pd.DataFrame({
         "Parameter": [
@@ -442,272 +700,60 @@ with tabs[1]:
     st.table(comparison_df)
 
     chart_df = pd.DataFrame({
-        "Metric": [
-            "Slew Time (ms)",
-            "Total Reaction Time (ms)",
-            "Total Interception Time (ms)",
-            "Probability of Kill (%)"
-        ],
-        "ETC-DMA": [
-            etc_slew_time * 1000,
-            etc_total_reaction * 1000,
-            etc_total_interception * 1000,
-            etc_pk * 100
-        ],
-        "Conventional": [
-            conventional_slew_time * 1000,
-            conventional_total_reaction * 1000,
-            conventional_total_interception * 1000,
-            conventional_pk * 100
-        ]
+        "Metric": ["Slew Time (ms)", "Reaction Time (ms)", "Interception Time (ms)", "Pk (%)"],
+        "ETC-DMA": [etc_slew_time*1000, etc_total_reaction*1000, etc_total_interception*1000, etc_pk*100],
+        "Conventional": [conventional_slew_time*1000, conventional_total_reaction*1000, conventional_total_interception*1000, conventional_pk*100]
     })
 
     fig = go.Figure()
     fig.add_trace(go.Bar(x=chart_df["Metric"], y=chart_df["ETC-DMA"], name="ETC-DMA"))
     fig.add_trace(go.Bar(x=chart_df["Metric"], y=chart_df["Conventional"], name="Conventional"))
-    fig.update_layout(
-        title="ETC-DMA vs Conventional: Reaction, Slew, Interception and Pk",
-        xaxis_title="Metric",
-        yaxis_title="Value",
-        barmode="group",
-        height=450,
-        template="plotly_white"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    improvement_reaction = (1 - etc_total_reaction / max(conventional_total_reaction, 1e-6)) * 100
-    improvement_interception = (1 - etc_total_interception / max(conventional_total_interception, 1e-6)) * 100
-
-    st.success(
-        f"ETC-DMA reduces total reaction time by approximately {improvement_reaction:.1f}% "
-        f"and total interception time by approximately {improvement_interception:.1f}% for the selected scenario."
-    )
-
-# ============================================================
-# 3D HELPERS
-# ============================================================
-
-def cuboid(x0, x1, y0, y1, z0, z1, color="olive", opacity=1):
-    x = [x0,x1,x1,x0,x0,x1,x1,x0]
-    y = [y0,y0,y1,y1,y0,y0,y1,y1]
-    z = [z0,z0,z0,z0,z1,z1,z1,z1]
-    i = [0,0,0,1,1,2,4,4,5,5,6,6]
-    j = [1,2,4,2,5,3,5,6,6,1,7,2]
-    k = [2,3,5,5,6,7,6,7,1,0,2,3]
-    return go.Mesh3d(x=x,y=y,z=z,i=i,j=j,k=k,color=color,opacity=opacity,flatshading=True,hoverinfo="skip")
-
-def ring(radius, z, color):
-    t = np.linspace(0, 2*np.pi, 250)
-    return go.Scatter3d(
-        x=radius*np.cos(t),
-        y=radius*np.sin(t),
-        z=np.full_like(t,z),
-        mode="lines",
-        line=dict(color=color,width=6),
-        hoverinfo="skip"
-    )
-
-def cone_marker(x,y,z,color,u=0.8,v=0,w=0):
-    return go.Cone(
-        x=[x], y=[y], z=[z],
-        u=[u], v=[v], w=[w],
-        sizemode="absolute",
-        sizeref=0.55,
-        colorscale=[[0,color],[1,color]],
-        showscale=False,
-        hoverinfo="skip"
-    )
-
-def create_tank():
-    parts = []
-    parts.append(cuboid(-4.5,4.5,-2,2,0.35,1.2,"darkolivegreen"))
-    parts.append(cuboid(-1.8,1.8,-1.25,1.25,1.2,2.05,"olive"))
-    parts.append(cuboid(-2.3,-1.65,-0.5,0.5,1.5,2.0,"darkkhaki"))
-    parts.append(cuboid(-8.4,-2.3,-0.12,0.12,1.65,1.9,"darkolivegreen"))
-    parts.append(cuboid(-4.8,4.7,-2.55,-2.05,0,0.65,"dimgray"))
-    parts.append(cuboid(-4.8,4.7,2.05,2.55,0,0.65,"dimgray"))
-
-    dma = [
-        (-4.4,-2.35,1.45),
-        (-4.4,2.35,1.45),
-        (0,-2.35,1.55),
-        (0,2.35,1.55),
-        (4.2,-2.35,1.45),
-        (4.2,2.35,1.45),
-        (0.1,0,2.58),
-        (-1.3,0,2.45)
-    ]
-
-    for idx, p in enumerate(dma[:available_launchers]):
-        col = "yellow" if idx+1 == dma_id else "gold"
-        parts.append(
-            go.Scatter3d(
-                x=[p[0]], y=[p[1]], z=[p[2]],
-                mode="markers",
-                marker=dict(size=7,color=col),
-                hoverinfo="skip"
-            )
-        )
-
-    return parts, np.array(dma[:available_launchers])
-
-# ============================================================
-# TAB 3 — 3D ENGAGEMENT
-# ============================================================
-
-with tabs[2]:
-    st.subheader("3D APS Engagement Visualization")
-
-    scale = 25
-    det_r = detection_range / scale
-    int_r = interception_range / scale
-
-    theta = np.radians(angle)
-    start = np.array([
-        -distance/scale,
-        -np.tan(theta)*(distance/scale)*0.45,
-        2.2 + (angle/90)*3
-    ])
-
-    center = np.array([0,0,1.45])
-    direction = (center-start) / np.linalg.norm(center-start)
-    intercept = center - direction * int_r
-
-    n = 45
-    missile_path = np.linspace(start, center, n)
-
-    tank, dma_pos = create_tank()
-    launch_pt = dma_pos[min(dma_id-1, len(dma_pos)-1)]
-    interceptor_path = np.linspace(launch_pt, intercept, n)
-    intercept_idx = int(np.argmin(np.linalg.norm(missile_path-intercept, axis=1)))
-
-    gx, gy = np.meshgrid(np.linspace(-18,10,2), np.linspace(-10,10,2))
-    ground = go.Surface(
-        x=gx, y=gy, z=np.zeros_like(gx)-0.04,
-        colorscale=[[0,"tan"],[1,"tan"]],
-        opacity=0.45,
-        showscale=False,
-        hoverinfo="skip"
-    )
-
-    base_data = [
-        ground,
-        ring(det_r,0.04,"cyan"),
-        ring(int_r,0.08,"lime")
-    ] + tank + [
-        go.Scatter3d(
-            x=missile_path[:,0],
-            y=missile_path[:,1],
-            z=missile_path[:,2],
-            mode="lines",
-            line=dict(color="red",width=6),
-            hoverinfo="skip"
-        ),
-        go.Scatter3d(
-            x=[launch_pt[0],intercept[0]],
-            y=[launch_pt[1],intercept[1]],
-            z=[launch_pt[2],intercept[2]],
-            mode="lines",
-            line=dict(color="lime",width=7,dash="dash"),
-            hoverinfo="skip"
-        ),
-        go.Scatter3d(
-            x=[intercept[0]],
-            y=[intercept[1]],
-            z=[intercept[2]],
-            mode="markers+text",
-            marker=dict(size=7,color="lime"),
-            text=["Neutralization"],
-            textposition="top center",
-            hoverinfo="skip"
-        ),
-        cone_marker(missile_path[0,0], missile_path[0,1], missile_path[0,2], "red"),
-        cone_marker(launch_pt[0], launch_pt[1], launch_pt[2], "lime", -0.7, 0.2, 0.05)
-    ]
-
-    frames = []
-    for i in range(n):
-        idx = min(i, intercept_idx)
-        mpos = missile_path[idx] if i < intercept_idx else intercept
-        ipos = interceptor_path[min(i,n-1)] if i < intercept_idx else intercept
-        mcol = "red" if i < intercept_idx else "orange"
-
-        frames.append(
-            go.Frame(
-                data=[
-                    cone_marker(mpos[0],mpos[1],mpos[2],mcol),
-                    cone_marker(ipos[0],ipos[1],ipos[2],"lime",-0.7,0.2,0.05)
-                ],
-                traces=[len(base_data)-2, len(base_data)-1],
-                name=str(i)
-            )
-        )
-
-    fig = go.Figure(data=base_data, frames=frames)
-
-    fig.update_layout(
-        height=720,
-        showlegend=False,
-        margin=dict(l=0,r=0,t=40,b=0),
-        scene=dict(
-            xaxis=dict(range=[-18,10],showgrid=False,showbackground=False),
-            yaxis=dict(range=[-10,10],showgrid=False,showbackground=False),
-            zaxis=dict(range=[0,9],showgrid=False,showbackground=False),
-            aspectmode="manual",
-            aspectratio=dict(x=1.7,y=1,z=0.55),
-            camera=dict(eye=dict(x=-1.85,y=-1.35,z=0.85))
-        ),
-        updatemenus=[
-            dict(
-                type="buttons",
-                showactive=False,
-                x=0.02,
-                y=0.98,
-                buttons=[
-                    dict(
-                        label="▶ Play",
-                        method="animate",
-                        args=[
-                            None,
-                            dict(
-                                frame=dict(duration=100,redraw=True),
-                                transition=dict(duration=0),
-                                mode="immediate"
-                            )
-                        ]
-                    ),
-                    dict(
-                        label="⏸ Pause",
-                        method="animate",
-                        args=[
-                            [None],
-                            dict(
-                                frame=dict(duration=0,redraw=False),
-                                mode="immediate"
-                            )
-                        ]
-                    )
-                ]
-            )
-        ]
-    )
-
+    fig.update_layout(barmode="group", height=430, template="plotly_dark")
     st.plotly_chart(fig, use_container_width=True)
 
 # ============================================================
-# TAB 4 — ETC RESULTS
+# TAB 4
 # ============================================================
 
 with tabs[3]:
-    st.subheader("ETC Curves and CFD-Style Contours")
+    st.subheader("2D Tactical Top View")
 
-    t = np.linspace(0, 5, 160)
+    theta = np.radians(angle)
+    missile_x = -distance/25
+    missile_y = -np.tan(theta)*(distance/25)*0.45
+
+    fig2d = go.Figure()
+
+    t = np.linspace(0, 2*np.pi, 250)
+    fig2d.add_trace(go.Scatter(x=(detection_range/25)*np.cos(t), y=(detection_range/25)*np.sin(t), mode="lines", name="Detection Range"))
+    fig2d.add_trace(go.Scatter(x=(interception_range/25)*np.cos(t), y=(interception_range/25)*np.sin(t), mode="lines", name="Interception Range"))
+    fig2d.add_trace(go.Scatter(x=[0], y=[0], mode="markers+text", marker=dict(size=20), text=["MBT"], textposition="top center"))
+    fig2d.add_trace(go.Scatter(x=[missile_x,0], y=[missile_y,0], mode="lines+markers", name="Threat Path"))
+
+    sectors = ["F","FL","L","RL","R","RR","Right","FR"]
+    for i in range(8):
+        a = np.radians(i*45+22.5)
+        col = "red" if i+1 == dma_id else "gold"
+        fig2d.add_trace(go.Scatter(x=[3*np.cos(a)], y=[3*np.sin(a)], mode="markers+text",
+                                   marker=dict(size=14,color=col), text=[str(i+1)], textposition="top center", showlegend=False))
+
+    fig2d.update_layout(height=560, template="plotly_dark", title="Tactical Top-View Engagement Map", xaxis=dict(scaleanchor="y"))
+    st.plotly_chart(fig2d, use_container_width=True)
+
+# ============================================================
+# TAB 5
+# ============================================================
+
+with tabs[4]:
+    st.subheader("ETC Curves and Contours")
+
+    t_ms = np.linspace(0, 5, 160)
     peak_t = 1.0 + 0.4*(1-plasma_efficiency)
     width = 0.55 + 0.25*(propellant_mass_g/300)
 
-    pressure = etc["pressure_mpa"] * np.exp(-((t-peak_t)/width)**2)
-    temp = 300 + (etc["temp_K"]-300)*np.exp(-((t-peak_t)/(width*1.15))**2)
-    vel = np.minimum(etc["muzzle_velocity"]*(1-np.exp(-t/1.25)), etc["muzzle_velocity"])
+    pressure = etc["pressure_mpa"] * np.exp(-((t_ms-peak_t)/width)**2)
+    temp = 300 + (etc["temp_K"]-300)*np.exp(-((t_ms-peak_t)/(width*1.15))**2)
+    vel = np.minimum(etc["muzzle_velocity"]*(1-np.exp(-t_ms/1.25)), etc["muzzle_velocity"])
 
     curve_tabs = st.tabs(["Pressure", "Temperature", "Velocity"])
 
@@ -718,17 +764,11 @@ with tabs[3]:
     ]:
         with tb:
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=t,y=y,mode="lines",line=dict(width=4)))
-            fig.update_layout(
-                height=360,
-                title=title,
-                xaxis_title="Time (ms)",
-                yaxis_title=yl,
-                template="plotly_white"
-            )
+            fig.add_trace(go.Scatter(x=t_ms,y=y,mode="lines",line=dict(width=4)))
+            fig.update_layout(height=360,title=title,xaxis_title="Time (ms)",yaxis_title=yl,template="plotly_dark")
             st.plotly_chart(fig,use_container_width=True)
 
-    st.markdown("### Contour Results")
+    st.markdown("### CFD-Style Contours")
 
     Lc, Lb = chamber_length_mm, barrel_length_mm
     total_len = Lc + Lb
@@ -744,11 +784,7 @@ with tabs[3]:
     R = np.where(
         X<transition_start,
         chamber_r,
-        np.where(
-            X<Lc,
-            chamber_r-(chamber_r-barrel_r)*((X-transition_start)/max(Lc-transition_start,1e-6)),
-            barrel_r
-        )
+        np.where(X<Lc, chamber_r-(chamber_r-barrel_r)*((X-transition_start)/max(Lc-transition_start,1e-6)), barrel_r)
     )
 
     inside = Y <= R
@@ -769,149 +805,15 @@ with tabs[3]:
     ]:
         with tb:
             figc = go.Figure(go.Contour(x=x,y=y,z=field,colorscale=scale_name,colorbar=dict(title=unit)))
-            figc.update_layout(
-                height=450,
-                title=title,
-                xaxis_title="Axial Length (mm)",
-                yaxis_title="Radius (mm)",
-                template="plotly_white"
-            )
+            figc.update_layout(height=450,title=title,xaxis_title="Axial Length (mm)",yaxis_title="Radius (mm)",template="plotly_dark")
             st.plotly_chart(figc,use_container_width=True)
 
 # ============================================================
-# TAB 5 — MONTE CARLO
-# ============================================================
-
-with tabs[4]:
-    st.subheader("Monte Carlo Probability of Kill Simulation")
-
-    rng = np.random.default_rng(42)
-    results = []
-
-    for _ in range(monte_carlo_trials):
-        v = velocity * (1 + rng.uniform(-velocity_error_percent, velocity_error_percent)/100)
-        d = distance + rng.uniform(-sensor_error_m, sensor_error_m)
-        a = angle + rng.uniform(-angle_error_deg, angle_error_deg)
-        delay = etc_total_reaction + rng.uniform(-delay_error_ms, delay_error_ms)/1000
-        tc, _ = threat_ai_score(v, d, a, base["lethality"])
-        tti_mc = d / max(v,1e-6)
-        total = max(delay,0) + etc["launch_accel_time"] + etc_interceptor_flight
-        margin = tti_mc - total
-        pk_mc = pk_model(
-            margin,
-            tc,
-            radar_health,
-            sensor_health,
-            launcher_health,
-            remaining_countermeasures,
-            thermal_load
-        )
-        success = rng.random() < pk_mc
-        results.append([v,d,a,margin,pk_mc,success])
-
-    mc_df = pd.DataFrame(results, columns=["Velocity","Distance","Angle","Time Margin","Pk","Success"])
-    success_rate = mc_df["Success"].mean()
-
-    c1,c2,c3 = st.columns(3)
-    c1.metric("Monte Carlo Success Rate", f"{success_rate*100:.1f}%")
-    c2.metric("Mean Pk", f"{mc_df['Pk'].mean()*100:.1f}%")
-    c3.metric("Worst Time Margin", f"{mc_df['Time Margin'].min():.4f} s")
-
-    fig = go.Figure(go.Histogram(x=mc_df["Pk"]*100, nbinsx=30))
-    fig.update_layout(
-        height=360,
-        title="Monte Carlo Pk Distribution",
-        xaxis_title="Pk (%)",
-        yaxis_title="Count",
-        template="plotly_white"
-    )
-    st.plotly_chart(fig,use_container_width=True)
-
-# ============================================================
-# TAB 6 — PYRO VS ETC
+# TAB 6
 # ============================================================
 
 with tabs[5]:
-    st.subheader("Pyrotechnic vs ETC Launcher Performance")
-
-    comp = pd.DataFrame({
-        "Parameter": [
-            "Peak Pressure",
-            "Peak Temperature",
-            "Muzzle Velocity",
-            "Base Reaction Time",
-            "Slew Time",
-            "Total Reaction Time",
-            "Total Interception Time",
-            "Probability of Kill"
-        ],
-        "Conventional": [
-            f"{pyro_pressure:.1f} MPa",
-            f"{pyro_temp:.0f} K",
-            f"{pyro_velocity:.1f} m/s",
-            f"{conventional_base_reaction*1000:.2f} ms",
-            f"{conventional_slew_time*1000:.2f} ms",
-            f"{conventional_total_reaction*1000:.2f} ms",
-            f"{conventional_total_interception:.4f} s",
-            f"{conventional_pk*100:.2f}%"
-        ],
-        "ETC-DMA": [
-            f"{etc['pressure_mpa']:.1f} MPa",
-            f"{etc['temp_K']:.0f} K",
-            f"{etc['muzzle_velocity']:.1f} m/s",
-            f"{etc_base_reaction*1000:.2f} ms",
-            f"{etc_slew_time*1000:.2f} ms",
-            f"{etc_total_reaction*1000:.2f} ms",
-            f"{etc_total_interception:.4f} s",
-            f"{etc_pk*100:.2f}%"
-        ]
-    })
-
-    st.table(comp)
-
-# ============================================================
-# TAB 7 — DMA MAP
-# ============================================================
-
-with tabs[6]:
-    st.subheader("DMA Launcher Selection Map")
-
-    sectors = ["Front","Front-Left","Left","Rear-Left","Rear","Rear-Right","Right","Front-Right"]
-
-    fig = go.Figure()
-
-    for i in range(8):
-        col = "red" if i+1 == dma_id else "gold"
-
-        fig.add_trace(
-            go.Scatterpolar(
-                r=[1],
-                theta=[i*45+22.5],
-                mode="markers+text",
-                marker=dict(size=18,color=col),
-                text=[f"{i+1}<br>{sectors[i]}"],
-                textposition="top center",
-                showlegend=False
-            )
-        )
-
-    fig.update_layout(
-        polar=dict(
-            radialaxis=dict(visible=False),
-            angularaxis=dict(direction="clockwise")
-        ),
-        height=520,
-        title=f"Selected DMA Launcher: {dma_id} - {dma_sector}"
-    )
-
-    st.plotly_chart(fig,use_container_width=True)
-
-# ============================================================
-# TAB 8 — REPORT
-# ============================================================
-
-with tabs[7]:
-    st.subheader("Auto Thesis Result Report")
+    st.subheader("Download Simulation and Result Report")
 
     report_df = pd.DataFrame({
         "Parameter": [
@@ -961,20 +863,32 @@ with tabs[7]:
     csv = report_df.to_csv(index=False).encode("utf-8")
 
     st.download_button(
-        label="📥 Download Thesis Result Report CSV",
+        label="📥 Download CSV Result Report",
         data=csv,
-        file_name="aps_etc_reaction_slew_comparison_report.csv",
+        file_name="aps_etc_simulation_result_report.csv",
         mime="text/csv"
     )
 
-    st.markdown("### Thesis Explanation")
-    st.write(
-        """
-        This upgraded module compares the reaction time and slew-rate effect of an ETC-DMA puck launcher
-        against a conventional mechanically slewed launcher. The conventional system requires a larger angular
-        movement toward the incoming threat direction, while the distributed ETC-DMA architecture reduces the
-        effective slew angle by placing multiple launcher pucks around the vehicle. Therefore, the ETC-DMA
-        approach reduces slew delay, total reaction time, and total interception time, improving the time margin
-        available for APS engagement.
-        """
+    fig_html = build_3d_figure().to_html(include_plotlyjs="cdn")
+
+    html_report = f"""
+    <html>
+    <head>
+        <title>APS ETC Simulation Report</title>
+    </head>
+    <body style="background:#07110d;color:#e8f5e9;font-family:Arial;">
+        <h1>APS ETC Simulation Report</h1>
+        <h2>Key Results</h2>
+        {report_df.to_html(index=False)}
+        <h2>3D Simulation View</h2>
+        {fig_html}
+    </body>
+    </html>
+    """
+
+    st.download_button(
+        label="🌐 Download Full HTML Simulation View",
+        data=html_report.encode("utf-8"),
+        file_name="aps_etc_3d_simulation_view.html",
+        mime="text/html"
     )
